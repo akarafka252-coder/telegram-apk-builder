@@ -62,19 +62,20 @@ jobs:
           touch android/gradle.properties
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
+          # Paksa update font_awesome
           if grep -q "font_awesome_flutter" pubspec.yaml; then
             sed -i 's/.*font_awesome_flutter:.*/  font_awesome_flutter: ^11.0.0/' pubspec.yaml
           fi
 
-          find . -name "*.dart" -exec sed -i 's/Icon(FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
-          find . -name "*.dart" -exec sed -i 's/Icon( FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
-
+          # JURUS PERL: Ganti Icon( jadi FaIcon( walaupun beda baris (enter)
+          perl -0777 -pi -e 's/Icon\(\s*FontAwesomeIcons\./FaIcon(FontAwesomeIcons./gs' $(find lib -name "*.dart")
+          
           flutter clean
           flutter pub get
           
-          # JURUS DETEKTIF: Nyimpen log error ke file
+          # JURUS TURBO: Matiin tree-shake-icons biar gak rewel soal tipe data
           set +e
-          flutter build apk --release --android-skip-build-dependency-validation > build.log 2>&1
+          flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation > build.log 2>&1
           BUILD_STATUS=$?
           
           if [ $BUILD_STATUS -ne 0 ]; then
