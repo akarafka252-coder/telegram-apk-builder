@@ -1,25 +1,39 @@
 name: Build Android APK
+run-name: Build ${{ inputs.id }}
 on:
-  push:
-    paths:
-      - 'incoming/site.zip'
   workflow_dispatch:
+    inputs:
+      url:
+        description: 'Link download zip web'
+        required: true
+      id:
+        description: 'ID build'
+        required: true
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pasang web dari zip
+      - name: Download dan pasang web dari zip
+        env:
+          URL: ${{ inputs.url }}
         run: |
-          if [ -f incoming/site.zip ]; then
-            rm -rf www
-            mkdir www
-            unzip -q incoming/site.zip -d www
-            if [ ! -f www/index.html ]; then
-              sub=$(find www -mindepth 1 -maxdepth 1 -type d | head -n1)
-              if [ -n "$sub" ]; then cp -r "$sub"/. www/; fi
-            fi
+          mkdir -p dl
+          if echo "$URL" | grep -q "drive.google.com"; then
+            pip install -q gdown
+            gdown --fuzzy "$URL" -O dl/site.zip
+          else
+            curl -L --fail -o dl/site.zip "$URL"
+          fi
+          rm -rf www
+          mkdir www
+          unzip -q dl/site.zip -d www
+          if [ ! -f www/index.html ]; then
+            sub=$(find www -mindepth 1 -maxdepth 1 -type d ! -name '__MACOSX' | head -n1)
+            if [ -n "$sub" ]; then cp -r "$sub"/. www/; fi
           fi
           test -f www/index.html || (echo "index.html tidak ditemukan di zip" && exit 1)
 
@@ -46,7 +60,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload APK ke Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ inputs.id }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "app-$ID.apk"
+          gh release create "build-$ID" "app-$ID.apk" --title "Build $ID" --notes "APK dari bot" --target "${{ github.sha }}"
