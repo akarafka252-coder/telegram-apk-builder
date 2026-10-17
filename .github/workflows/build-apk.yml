@@ -95,6 +95,9 @@ jobs:
           fi
           M=android/app/src/main/AndroidManifest.xml
           if [ -f "$M" ]; then sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APPNAME\"|" "$M"; fi
+          touch android/gradle.properties
+          echo "" >> android/gradle.properties
+          echo "android.newDsl=false" >> android/gradle.properties
           flutter pub get
           flutter build apk --release
 
