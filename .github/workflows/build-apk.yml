@@ -32,7 +32,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          # PERBAIKAN: Hapus baris flutter-version, cukup pakai channel saja
           channel: 'stable'
           cache: true
 
@@ -49,27 +48,32 @@ jobs:
         run: |
           cd proj
           
+          # 1. Bikin folder android kalau belum ada
           if [ ! -f pubspec.yaml ] && [ ! -d android ]; then
             flutter create . --platforms=android --project-name "app_web"
           elif [ ! -d android ]; then
             flutter create . --platforms=android --project-name "$(grep -m1 '^name:' pubspec.yaml | awk '{print $2}')"
           fi
 
+          # 2. Ubah nama aplikasi
           M=android/app/src/main/AndroidManifest.xml
           if [ -f "$M" ]; then 
             sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APPNAME\"|" "$M"
           fi
 
+          # 3. Upgrade Gradle Wrapper biar gak error versi
           touch android/gradle.properties
-          
-          # Upgrade Gradle ke 8.14.3
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
-          # Hapus cache Flutter
-          flutter clean 
-          
+          # 4. JURUS ANTI ERROR ICONDATA: Paksa upgrade font_awesome_flutter
+          if grep -q "font_awesome_flutter" pubspec.yaml; then
+            echo "Memperbaiki library font_awesome_flutter..."
+            sed -i 's/font_awesome_flutter:.*/font_awesome_flutter: ^11.0.0/' pubspec.yaml
+          fi
+
+          # 5. Bersihkan dan Build
+          flutter clean
           flutter pub get
-          
           flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Rename APK
