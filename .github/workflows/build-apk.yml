@@ -61,17 +61,20 @@ jobs:
             sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APPNAME\"|" "$M"
           fi
 
-          # 3. Upgrade Gradle Wrapper biar gak error versi
+          # 3. Upgrade Gradle Wrapper
           touch android/gradle.properties
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
-          # 4. JURUS ANTI ERROR ICONDATA: Paksa upgrade font_awesome_flutter
+          # 4. JURUS SIHIR 1: Paksa upgrade font_awesome_flutter
           if grep -q "font_awesome_flutter" pubspec.yaml; then
-            echo "Memperbaiki library font_awesome_flutter..."
             sed -i 's/font_awesome_flutter:.*/font_awesome_flutter: ^11.0.0/' pubspec.yaml
           fi
 
-          # 5. Bersihkan dan Build
+          # 5. JURUS SIHIR 2: Ganti otomatis Icon jadi FaIcon di semua file dart
+          find lib -name "*.dart" -exec sed -i 's/Icon(FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
+          find lib -name "*.dart" -exec sed -i 's/Icon( FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
+
+          # 6. Bersihkan dan Build
           flutter clean
           flutter pub get
           flutter build apk --release --android-skip-build-dependency-validation
