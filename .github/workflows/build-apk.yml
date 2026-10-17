@@ -49,36 +49,32 @@ jobs:
         run: |
           cd proj
           
-          # Cek apakah proyek Flutter, Android, atau Web
           if [ ! -f pubspec.yaml ] && [ ! -d android ]; then
-            echo "Bukan proyek Flutter/Android, mencoba setup Web..."
             flutter create . --platforms=android --project-name "app_web"
           elif [ ! -d android ]; then
-            echo "Proyek Flutter tanpa folder Android, membuat folder Android..."
             flutter create . --platforms=android --project-name "$(grep -m1 '^name:' pubspec.yaml | awk '{print $2}')"
           fi
 
-          # Ubah nama aplikasi di AndroidManifest
           M=android/app/src/main/AndroidManifest.xml
           if [ -f "$M" ]; then 
             sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APPNAME\"|" "$M"
           fi
 
-          # PERBAIKAN 1: Hapus baris android.newDsl=false yang bermasalah
           touch android/gradle.properties
           
-          # PERBAIKAN 2: Paksa upgrade Gradle ke versi 8.14.3 (minimal yang diminta Flutter)
+          # Upgrade Gradle ke 8.14.3
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
+          # INI DIA PERINTAH HAPUS CACHE NYA:
+          flutter clean 
+          
           flutter pub get
           
-          # PERBAIKAN 3: Tambahkan bypass validation jaga-jaga
           flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Rename APK
         run: |
           cd proj
-          # Cari file APK dan ganti namanya
           find build/app/outputs/flutter-apk/ -name "*.apk" -exec mv {} app-release.apk \;
 
       - name: Create Release and Upload APK
