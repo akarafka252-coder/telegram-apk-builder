@@ -62,7 +62,7 @@ jobs:
           touch android/gradle.properties
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
-          # Paksa update font_awesome
+          # Paksa update font_awesome ke v11
           if grep -q "font_awesome_flutter" pubspec.yaml; then
             sed -i 's/.*font_awesome_flutter:.*/  font_awesome_flutter: ^11.0.0/' pubspec.yaml
           fi
@@ -73,18 +73,8 @@ jobs:
           flutter clean
           flutter pub get
           
-          # JURUS TURBO: Matiin tree-shake-icons biar gak rewel soal tipe data
-          set +e
-          flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation > build.log 2>&1
-          BUILD_STATUS=$?
-          
-          if [ $BUILD_STATUS -ne 0 ]; then
-            echo "========================================="
-            echo "🚨 INI ERROR ASLINYA BRE:"
-            echo "========================================="
-            grep -i -C 5 "error" build.log | tail -n 50
-            exit 1
-          fi
+          # JURUS TURBO: Matiin tree-shake-icons biar gak rewel
+          flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
 
       - name: Rename APK
         run: |
