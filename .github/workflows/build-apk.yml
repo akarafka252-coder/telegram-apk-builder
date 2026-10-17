@@ -32,7 +32,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'stable'
+          # PERBAIKAN: Hapus baris flutter-version, cukup pakai channel saja
           channel: 'stable'
           cache: true
 
@@ -65,7 +65,7 @@ jobs:
           # Upgrade Gradle ke 8.14.3
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
-          # INI DIA PERINTAH HAPUS CACHE NYA:
+          # Hapus cache Flutter
           flutter clean 
           
           flutter pub get
