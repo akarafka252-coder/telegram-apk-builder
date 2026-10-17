@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: 'Link download zip web'
+        description: 'Link download zip proyek'
         required: true
       id:
         description: 'ID build'
@@ -18,10 +18,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download dan pasang web dari zip
+      - name: Download ZIP
         env:
           URL: ${{ inputs.url }}
         run: |
@@ -32,14 +33,40 @@ jobs:
           else
             curl -L --fail --retry 5 --retry-delay 5 --retry-all-errors -o dl/site.zip "$URL"
           fi
-          rm -rf www
-          mkdir www
-          unzip -q dl/site.zip -d www
-          if [ ! -f www/index.html ]; then
-            sub=$(find www -mindepth 1 -maxdepth 1 -type d ! -name '__MACOSX' | head -n1)
-            if [ -n "$sub" ]; then cp -r "$sub"/. www/; fi
+
+      - name: Deteksi tipe proyek
+        id: detect
+        run: |
+          rm -rf proj && mkdir proj
+          unzip -q dl/site.zip -d proj
+          rm -rf proj/__MACOSX
+          first() {
+            find proj -maxdepth "$1" -name "$2" -not -path '*/node_modules/*' \
+              | awk '{print length, $0}' | sort -n | head -n1 | cut -d' ' -f2-
+          }
+          PUB=$(first 4 pubspec.yaml)
+          SET=$(first 4 settings.gradle)
+          [ -z "$SET" ] && SET=$(first 4 settings.gradle.kts)
+          PKG=$(first 4 package.json)
+          IDX=$(first 4 index.html)
+          TYPE=""
+          DIR=""
+          if [ -n "$PUB" ]; then
+            TYPE=flutter; DIR=$(dirname "$PUB")
+          elif [ -n "$SET" ]; then
+            TYPE=android; DIR=$(dirname "$SET")
+          elif [ -n "$PKG" ] && grep -q '"build"' "$PKG"; then
+            TYPE=npm; DIR=$(dirname "$PKG")
+          elif [ -n "$IDX" ]; then
+            TYPE=web; DIR=$(dirname "$IDX")
           fi
-          test -f www/index.html || (echo "index.html tidak ditemukan di zip" && exit 1)
+          if [ -z "$TYPE" ]; then
+            echo "Tipe proyek tidak dikenali. Zip harus berisi proyek Flutter, Android (Gradle), atau web (index.html)."
+            exit 1
+          fi
+          echo "Terdeteksi: $TYPE di $DIR"
+          echo "type=$TYPE" >> "$GITHUB_OUTPUT"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -48,29 +75,97 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: ${{ (steps.detect.outputs.type == 'web' || steps.detect.outputs.type == 'npm') && '21' || '17' }}
 
-      - name: Setup Capacitor
+      - name: Setup Flutter
+        if: steps.detect.outputs.type == 'flutter'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: false
+
+      - name: Build Flutter
+        if: steps.detect.outputs.type == 'flutter'
+        working-directory: ${{ steps.detect.outputs.dir }}
         env:
           APPNAME: ${{ inputs.name }}
         run: |
-          PKG="com.build.a$(date +%s)"
+          if [ ! -d android ]; then
+            flutter create . --platforms=android --project-name "$(grep -m1 '^name:' pubspec.yaml | awk '{print $2}')"
+          fi
+          M=android/app/src/main/AndroidManifest.xml
+          if [ -f "$M" ]; then sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APPNAME\"|" "$M"; fi
+          flutter pub get
+          flutter build apk --release
+
+      - name: Build Android (Gradle)
+        if: steps.detect.outputs.type == 'android'
+        working-directory: ${{ steps.detect.outputs.dir }}
+        env:
+          APPNAME: ${{ inputs.name }}
+        run: |
+          M=$(find . -path '*src/main/AndroidManifest.xml' | head -n1)
+          if [ -n "$M" ]; then sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APPNAME\"|" "$M"; fi
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --no-daemon
+          else
+            gradle assembleDebug --no-daemon
+          fi
+
+      - name: Bungkus web jadi APK (Capacitor)
+        if: steps.detect.outputs.type == 'web' || steps.detect.outputs.type == 'npm'
+        env:
+          APPNAME: ${{ inputs.name }}
+          TYPE: ${{ steps.detect.outputs.type }}
+          DIR: ${{ steps.detect.outputs.dir }}
+        run: |
+          WEB="$GITHUB_WORKSPACE/$DIR"
+          if [ "$TYPE" = "npm" ]; then
+            cd "$DIR"
+            npm install --no-audit --no-fund
+            npm run build
+            OUT=""
+            for d in dist build out public; do
+              if [ -f "$d/index.html" ]; then OUT="$d"; break; fi
+            done
+            if [ -z "$OUT" ]; then echo "Hasil build web (index.html) tidak ditemukan"; exit 1; fi
+            WEB="$PWD/$OUT"
+            cd "$GITHUB_WORKSPACE"
+          fi
+          rm -rf www
+          mkdir www
+          cp -r "$WEB"/. www/
+          PKGID="com.build.a$(date +%s)"
           npm init -y
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
-          npx cap init "$APPNAME" "$PKG" --web-dir=www
+          npx cap init "$APPNAME" "$PKGID" --web-dir=www
           npx cap add android
           npx cap sync android
-
-      - name: Build APK
-        run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Cari file APK
+        id: apk
+        env:
+          TYPE: ${{ steps.detect.outputs.type }}
+          DIR: ${{ steps.detect.outputs.dir }}
+        run: |
+          case "$TYPE" in
+            web|npm) SEARCH=android ;;
+            *) SEARCH="$DIR" ;;
+          esac
+          APK=$(find "$SEARCH" -path '*outputs*' -name '*.apk' | grep -v unaligned | head -n1)
+          if [ -z "$APK" ]; then echo "File APK tidak ditemukan"; exit 1; fi
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK ke Release
         env:
           GH_TOKEN: ${{ github.token }}
           ID: ${{ inputs.id }}
+          TYPE: ${{ steps.detect.outputs.type }}
+          APK: ${{ steps.apk.outputs.apk }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk "app-$ID.apk"
-          gh release create "build-$ID" "app-$ID.apk" --title "Build $ID" --notes "APK dari bot" --target "${{ github.sha }}"
+          cp "$APK" "app-$ID.apk"
+          gh release create "build-$ID" "app-$ID.apk" --title "Build $ID" --notes "Tipe: $TYPE" --target "${{ github.sha }}"
