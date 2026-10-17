@@ -48,33 +48,32 @@ jobs:
         run: |
           cd proj
           
-          # 1. Bikin folder android kalau belum ada
           if [ ! -f pubspec.yaml ] && [ ! -d android ]; then
             flutter create . --platforms=android --project-name "app_web"
           elif [ ! -d android ]; then
             flutter create . --platforms=android --project-name "$(grep -m1 '^name:' pubspec.yaml | awk '{print $2}')"
           fi
 
-          # 2. Ubah nama aplikasi
           M=android/app/src/main/AndroidManifest.xml
           if [ -f "$M" ]; then 
             sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APPNAME\"|" "$M"
           fi
 
-          # 3. Upgrade Gradle Wrapper
           touch android/gradle.properties
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
-          # 4. JURUS SIHIR 1: Paksa upgrade font_awesome_flutter
+          # JURUS SAPU BERSIH: Paksa upgrade library font_awesome
           if grep -q "font_awesome_flutter" pubspec.yaml; then
-            sed -i 's/font_awesome_flutter:.*/font_awesome_flutter: ^11.0.0/' pubspec.yaml
+            sed -i 's/.*font_awesome_flutter:.*/  font_awesome_flutter: ^11.0.0/' pubspec.yaml
           fi
 
-          # 5. JURUS SIHIR 2: Ganti otomatis Icon jadi FaIcon di semua file dart
-          find lib -name "*.dart" -exec sed -i 's/Icon(FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
-          find lib -name "*.dart" -exec sed -i 's/Icon( FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
+          # Ganti otomatis Icon jadi FaIcon
+          find . -name "*.dart" -exec sed -i 's/Icon(FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
+          find . -name "*.dart" -exec sed -i 's/Icon( FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
 
-          # 6. Bersihkan dan Build
+          # Maksa upgrade semua library yang usang
+          flutter pub upgrade --major-versions
+          
           flutter clean
           flutter pub get
           flutter build apk --release --android-skip-build-dependency-validation
