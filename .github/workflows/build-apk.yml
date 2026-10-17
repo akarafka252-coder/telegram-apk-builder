@@ -62,21 +62,28 @@ jobs:
           touch android/gradle.properties
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
-          # JURUS SAPU BERSIH: Paksa upgrade library font_awesome
           if grep -q "font_awesome_flutter" pubspec.yaml; then
             sed -i 's/.*font_awesome_flutter:.*/  font_awesome_flutter: ^11.0.0/' pubspec.yaml
           fi
 
-          # Ganti otomatis Icon jadi FaIcon
           find . -name "*.dart" -exec sed -i 's/Icon(FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
           find . -name "*.dart" -exec sed -i 's/Icon( FontAwesomeIcons/FaIcon(FontAwesomeIcons/g' {} +
 
-          # Maksa upgrade semua library yang usang
-          flutter pub upgrade --major-versions
-          
           flutter clean
           flutter pub get
-          flutter build apk --release --android-skip-build-dependency-validation
+          
+          # JURUS DETEKTIF: Nyimpen log error ke file
+          set +e
+          flutter build apk --release --android-skip-build-dependency-validation > build.log 2>&1
+          BUILD_STATUS=$?
+          
+          if [ $BUILD_STATUS -ne 0 ]; then
+            echo "========================================="
+            echo "🚨 INI ERROR ASLINYA BRE:"
+            echo "========================================="
+            grep -i -C 5 "error" build.log | tail -n 50
+            exit 1
+          fi
 
       - name: Rename APK
         run: |
