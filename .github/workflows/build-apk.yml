@@ -59,6 +59,18 @@ jobs:
             cat "$F"
           fi
 
+      - name: Upgrade Android Gradle Plugin
+        run: |
+          for F in proj/android/settings.gradle proj/android/settings.gradle.kts; do
+            if [ -f "$F" ]; then
+              sed -i -E 's/(com\.android\.application[^v]*version *)"[0-9.]+"/\1"8.11.1"/' "$F"
+              grep -n "com.android" "$F" || true
+            fi
+          done
+          if [ -f proj/android/build.gradle ]; then
+            sed -i -E "s#(com\.android\.tools\.build:gradle:)[0-9.]+#\18.11.1#" proj/android/build.gradle
+          fi
+
       - name: Build APK
         run: |
           cd proj
