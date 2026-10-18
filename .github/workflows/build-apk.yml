@@ -38,12 +38,12 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.35.7'
           cache: true
 
       - name: Kunci versi font_awesome_flutter
         run: |
           cd proj
-          rm -f pubspec.lock
           sed -i -E 's/^(\s*font_awesome_flutter:).*/\1 10.9.1/' pubspec.yaml
 
       - name: Siapkan folder android
@@ -51,33 +51,11 @@ jobs:
           cd proj
           if [ ! -d android ]; then flutter create --platforms=android .; fi
 
-      - name: Upgrade Gradle wrapper
-        run: |
-          F=proj/android/gradle/wrapper/gradle-wrapper.properties
-          if [ -f "$F" ]; then
-            sed -i -E 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14-all.zip#' "$F"
-            cat "$F"
-          fi
-
-      - name: Upgrade AGP dan Kotlin
-        run: |
-          for F in proj/android/settings.gradle proj/android/settings.gradle.kts; do
-            if [ -f "$F" ]; then
-              sed -i -E 's/(com\.android\.application[^v]*version *)"[0-9.]+"/\1"8.11.1"/' "$F"
-              sed -i -E 's/(org\.jetbrains\.kotlin\.android[^v]*version *)"[0-9.]+"/\1"2.2.20"/' "$F"
-              grep -n -E "com.android|kotlin" "$F" || true
-            fi
-          done
-          if [ -f proj/android/build.gradle ]; then
-            sed -i -E "s#(com\.android\.tools\.build:gradle:)[0-9.]+#\18.11.1#" proj/android/build.gradle
-            sed -i -E "s#(ext\.kotlin_version *= *)'[0-9.]+'#\1'2.2.20'#" proj/android/build.gradle
-          fi
-
       - name: Build APK
         run: |
           cd proj
           flutter pub get
-          flutter build apk --release --android-skip-build-dependency-validation
+          flutter build apk --release
 
       - name: Upload ke Release
         env:
