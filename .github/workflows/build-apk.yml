@@ -45,7 +45,13 @@ jobs:
           cd proj
           rm -f pubspec.lock
           sed -i -E 's/^(\s*font_awesome_flutter:).*/\1 10.9.1/' pubspec.yaml
-
+            - name: Upgrade Gradle wrapper
+        run: |
+          F=proj/android/gradle/wrapper/gradle-wrapper.properties
+          if [ -f "$F" ]; then
+            sed -i -E 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14-all.zip#' "$F"
+            cat "$F"
+          fi
       - name: Siapkan folder android
         run: |
           cd proj
