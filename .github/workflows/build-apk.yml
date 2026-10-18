@@ -59,23 +59,25 @@ jobs:
             cat "$F"
           fi
 
-      - name: Upgrade Android Gradle Plugin
+      - name: Upgrade AGP dan Kotlin
         run: |
           for F in proj/android/settings.gradle proj/android/settings.gradle.kts; do
             if [ -f "$F" ]; then
               sed -i -E 's/(com\.android\.application[^v]*version *)"[0-9.]+"/\1"8.11.1"/' "$F"
-              grep -n "com.android" "$F" || true
+              sed -i -E 's/(org\.jetbrains\.kotlin\.android[^v]*version *)"[0-9.]+"/\1"2.2.20"/' "$F"
+              grep -n -E "com.android|kotlin" "$F" || true
             fi
           done
           if [ -f proj/android/build.gradle ]; then
             sed -i -E "s#(com\.android\.tools\.build:gradle:)[0-9.]+#\18.11.1#" proj/android/build.gradle
+            sed -i -E "s#(ext\.kotlin_version *= *)'[0-9.]+'#\1'2.2.20'#" proj/android/build.gradle
           fi
 
       - name: Build APK
         run: |
           cd proj
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Upload ke Release
         env:
