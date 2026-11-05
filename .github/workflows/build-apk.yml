@@ -22,13 +22,18 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Download & ekstrak ZIP
+        env:
+          ZIP_URL: ${{ github.event.inputs.url }}
         run: |
-          curl -L --fail -o site.zip "${{ github.event.inputs.url }}"
+          curl -L --fail -o site.zip "$ZIP_URL"
           mkdir -p extract
           unzip -q site.zip -d extract
+          rm -f site.zip
           PUB=$(find extract -name pubspec.yaml -not -path "*/.*" | head -n 1)
           if [ -z "$PUB" ]; then echo "pubspec.yaml tidak ditemukan"; exit 1; fi
           mv "$(dirname "$PUB")" proj
+          # Buang sisa build dari komputer pembuat ZIP supaya tidak bentrok dengan versi di runner
+          rm -rf proj/build proj/.dart_tool proj/android/.gradle proj/android/app/build
 
       - uses: actions/setup-java@v4
         with:
@@ -41,6 +46,22 @@ jobs:
           flutter-version: '3.35.7'
           cache: true
 
+      # Cache Gradle (distribusi Gradle + library umum) dipakai ulang antar build -> kompilasi lebih cepat
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-cleanup: on-success
+
+      # Memori Gradle/R8 dinaikkan untuk semua build (mencegah "OutOfMemoryError: Metaspace").
+      # Ditaruh di ~/.gradle supaya mengalahkan gradle.properties bawaan project.
+      - name: Atur memori Gradle
+        run: |
+          mkdir -p ~/.gradle
+          {
+            echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError"
+            echo "kotlin.daemon.jvmargs=-Xmx2g"
+            echo "org.gradle.caching=true"
+          } >> ~/.gradle/gradle.properties
+
       - name: Kunci versi font_awesome_flutter
         run: |
           cd proj
@@ -51,6 +72,37 @@ jobs:
           cd proj
           if [ ! -d android ]; then flutter create --platforms=android .; fi
 
+      # Coba dulu dengan Flutter 3.35.7 (versi yang sudah terbukti cocok untuk project kamu)
+      - name: Pub get (Flutter 3.35.7)
+        id: pub1
+        continue-on-error: true
+        run: |
+          cd proj
+          set -o pipefail
+          flutter pub get 2>&1 | tee ../pub.log
+
+      # Kalau gagal karena paket butuh Dart lebih baru ("version solving failed"), pindah ke Flutter stable terbaru
+      - name: Cek perlu Flutter lebih baru
+        id: perlu
+        if: steps.pub1.outcome == 'failure'
+        run: |
+          if grep -qiE "version solving failed|requires SDK version|current Dart SDK version" pub.log; then
+            echo "baru=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.perlu.outputs.baru == 'true'
+        with:
+          channel: stable
+          cache: true
+
+      - name: Pub get (Flutter stable terbaru)
+        if: steps.perlu.outputs.baru == 'true'
+        run: |
+          cd proj
+          flutter --version
+          flutter pub get
+
       - name: Build APK
         run: |
           cd proj
@@ -60,11 +112,13 @@ jobs:
       - name: Upload ke Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_NAME: ${{ github.event.inputs.name }}
+          BUILD_ID: ${{ github.event.inputs.id }}
         run: |
           APK=$(find proj/build/app/outputs/flutter-apk -name "app-release.apk" | head -n 1)
-          cp "$APK" "${{ github.event.inputs.name }}.apk"
-          gh release create "build-${{ github.event.inputs.id }}" \
-            "${{ github.event.inputs.name }}.apk" \
+          cp "$APK" "$APP_NAME.apk"
+          gh release create "build-$BUILD_ID" \
+            "$APP_NAME.apk" \
             --repo "${{ github.repository }}" \
-            --title "Build ${{ github.event.inputs.name }}" \
+            --title "Build $APP_NAME" \
             --notes "Tipe: Flutter"
