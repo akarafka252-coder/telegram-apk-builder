@@ -25,7 +25,7 @@ jobs:
         env:
           ZIP_URL: ${{ github.event.inputs.url }}
         run: |
-          curl -L --fail -o site.zip "$ZIP_URL"
+          curl -fL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o site.zip "$ZIP_URL"
           mkdir -p extract
           unzip -q site.zip -d extract
           rm -f site.zip
